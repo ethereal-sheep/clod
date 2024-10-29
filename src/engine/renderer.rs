@@ -540,10 +540,24 @@ impl Canvas {
         let end_y = (print_pos.y + (total_height + 1) / 2).min(size.y);
         let start_y = end_y.saturating_sub(total_height);
 
+        let padding_start_x = start_x + style.border_style.left_width();
         let padding_start_y = start_y + style.border_style.top_width();
 
         let line_start_x = start_x + style.left_width();
         let line_start_y = start_y + style.top_width();
+
+        for i in 0..padded_height {
+            for j in 0..padded_width {
+                if let Some(cell) = self
+                    .renderer
+                    .buffer
+                    .at_mut(U16Vec2::new(j + padding_start_x, i + padding_start_y))
+                {
+                    cell.c = ' ';
+                    cell.style = content.style().content_style();
+                }
+            }
+        }
 
         for (i, c) in content.content().chars().enumerate() {
             if let Some(cell) = self
@@ -552,7 +566,6 @@ impl Canvas {
                 .at_mut(U16Vec2::new(i as u16 + line_start_x, line_start_y))
             {
                 cell.c = c;
-                cell.style = content.style().content_style();
             }
         }
 

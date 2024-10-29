@@ -113,6 +113,7 @@ impl App for MyApp {
                     .align(CanvasAlignment::CENTER)
                     .border_white()
                     .vertical_padding(1)
+                    .on_red()
                     .horizontal_padding(3),
             );
         }
