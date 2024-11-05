@@ -29,14 +29,11 @@ impl App for MyApp {
     }
 
     fn on_key_event(&mut self, _state: &mut clod::State, event: crossterm::event::KeyEvent) {
-        match event.code {
-            crossterm::event::KeyCode::Char('a') => {
-                self.entities.push(Entity {
-                    pos: U16Vec2::new(0, 0),
-                    vel: I16Vec2::new(1, (self.entities.len() % 4 + 1) as i16),
-                });
-            }
-            _ => (),
+        if let crossterm::event::KeyCode::Char('a') = event.code {
+            self.entities.push(Entity {
+                pos: U16Vec2::new(0, 0),
+                vel: I16Vec2::new(1, (self.entities.len() % 4 + 1) as i16),
+            });
         }
     }
 

@@ -37,27 +37,7 @@ macro_rules! border_function {
                 styled
                     .as_mut()
                     .border_style
-                    .[<$border _border>]
-                    .get_or_insert_default()
-                    .foreground_color = Some(color);
-                styled
-            }
-
-            #[doc = concat!(
-                "Sets the border background color to [`",
-                stringify!($color),
-                "`](Color::",
-                stringify!($color),
-                ")."
-            )]
-            fn [<$border _border_on>](self, color: Color) -> Self::Styled {
-                let mut styled = self.stylize();
-                styled
-                    .as_mut()
-                    .border_style
-                    .[<$border _border>]
-                    .get_or_insert_default()
-                    .background_color = Some(color);
+                    .[<$border _border>] = Some(color);
                 styled
             }
         }
@@ -135,17 +115,6 @@ macro_rules! color_function {
                 }
 
                 #[doc = concat!(
-                    "Sets the border background color to [`",
-                    stringify!($color),
-                    "`](Color::",
-                    stringify!($color),
-                    ")."
-                )]
-                fn [<border_on_ $color:snake>](self) -> Self::Styled {
-                    self.border_on(Color::$color)
-                }
-
-                #[doc = concat!(
                     "Sets the border color to [`",
                     stringify!($color),
                     "`](Color::",
@@ -154,17 +123,6 @@ macro_rules! color_function {
                 )]
                 fn [<top_border_ $color:snake>](self) -> Self::Styled {
                     self.top_border_with(Color::$color)
-                }
-
-                #[doc = concat!(
-                    "Sets the border background color to [`",
-                    stringify!($color),
-                    "`](Color::",
-                    stringify!($color),
-                    ")."
-                )]
-                fn [<top_border_on_ $color:snake>](self) -> Self::Styled {
-                    self.top_border_on(Color::$color)
                 }
 
                 #[doc = concat!(
@@ -179,17 +137,6 @@ macro_rules! color_function {
                 }
 
                 #[doc = concat!(
-                    "Sets the border background color to [`",
-                    stringify!($color),
-                    "`](Color::",
-                    stringify!($color),
-                    ")."
-                )]
-                fn [<bottom_border_on_ $color:snake>](self) -> Self::Styled {
-                    self.bottom_border_on(Color::$color)
-                }
-
-                #[doc = concat!(
                     "Sets the border color to [`",
                     stringify!($color),
                     "`](Color::",
@@ -201,17 +148,6 @@ macro_rules! color_function {
                 }
 
                 #[doc = concat!(
-                    "Sets the border background color to [`",
-                    stringify!($color),
-                    "`](Color::",
-                    stringify!($color),
-                    ")."
-                )]
-                fn [<left_border_on_ $color:snake>](self) -> Self::Styled {
-                    self.left_border_on(Color::$color)
-                }
-
-                #[doc = concat!(
                     "Sets the border color to [`",
                     stringify!($color),
                     "`](Color::",
@@ -220,17 +156,6 @@ macro_rules! color_function {
                 )]
                 fn [<right_border_ $color:snake>](self) -> Self::Styled {
                     self.right_border_with(Color::$color)
-                }
-
-                #[doc = concat!(
-                    "Sets the border background color to [`",
-                    stringify!($color),
-                    "`](Color::",
-                    stringify!($color),
-                    ")."
-                )]
-                fn [<right_border_on_ $color:snake>](self) -> Self::Styled {
-                    self.right_border_on(Color::$color)
                 }
             }
         }
@@ -286,16 +211,8 @@ impl CanvasAlignment {
 pub enum BorderType {
     #[default]
     HalfBlock,
+    PaddedHalfBlock,
     Line,
-}
-
-/// The style that can be put on content.
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
-pub struct BorderColor {
-    /// The border's foreground color.
-    pub foreground_color: Option<Color>,
-    /// The border's background color.
-    pub background_color: Option<Color>,
 }
 
 /// The style that can be put on content.
@@ -304,13 +221,13 @@ pub struct BorderStyle {
     /// The border type.
     pub border_type: BorderType,
     /// The top border color
-    pub top_border: Option<BorderColor>,
+    pub top_border: Option<Color>,
     /// The bottom border color
-    pub bottom_border: Option<BorderColor>,
+    pub bottom_border: Option<Color>,
     /// The right border color
-    pub right_border: Option<BorderColor>,
+    pub right_border: Option<Color>,
     /// The left border color
-    pub left_border: Option<BorderColor>,
+    pub left_border: Option<Color>,
 }
 
 impl BorderStyle {
@@ -340,62 +257,6 @@ impl BorderStyle {
 
     pub fn extra_height(&self) -> u16 {
         self.top_width() + self.bottom_width()
-    }
-
-    pub fn top_right(&self) -> char {
-        match self.border_type {
-            BorderType::HalfBlock => '▄',
-            BorderType::Line => '┓',
-        }
-    }
-
-    pub fn top(&self) -> char {
-        match self.border_type {
-            BorderType::HalfBlock => '▄',
-            BorderType::Line => '━',
-        }
-    }
-
-    pub fn top_left(&self) -> char {
-        match self.border_type {
-            BorderType::HalfBlock => '▄',
-            BorderType::Line => '┏',
-        }
-    }
-
-    pub fn left(&self) -> char {
-        match self.border_type {
-            BorderType::HalfBlock => '█',
-            BorderType::Line => '┃',
-        }
-    }
-
-    pub fn bottom_left(&self) -> char {
-        match self.border_type {
-            BorderType::HalfBlock => '▀',
-            BorderType::Line => '┗',
-        }
-    }
-
-    pub fn bottom(&self) -> char {
-        match self.border_type {
-            BorderType::HalfBlock => '▀',
-            BorderType::Line => '━',
-        }
-    }
-
-    pub fn bottom_right(&self) -> char {
-        match self.border_type {
-            BorderType::HalfBlock => '▀',
-            BorderType::Line => '┛',
-        }
-    }
-
-    pub fn right(&self) -> char {
-        match self.border_type {
-            BorderType::HalfBlock => '█',
-            BorderType::Line => '┃',
-        }
     }
 }
 
@@ -545,45 +406,10 @@ pub trait Stylize: Sized {
     fn border_with(self, color: Color) -> Self::Styled {
         let mut styled = self.stylize();
         let border_style = &mut styled.as_mut().border_style;
-        border_style
-            .top_border
-            .get_or_insert_default()
-            .foreground_color = Some(color);
-        border_style
-            .bottom_border
-            .get_or_insert_default()
-            .foreground_color = Some(color);
-        border_style
-            .left_border
-            .get_or_insert_default()
-            .foreground_color = Some(color);
-        border_style
-            .right_border
-            .get_or_insert_default()
-            .foreground_color = Some(color);
-        styled
-    }
-
-    /// Sets the background color.
-    fn border_on(self, color: Color) -> Self::Styled {
-        let mut styled = self.stylize();
-        let border_style = &mut styled.as_mut().border_style;
-        border_style
-            .top_border
-            .get_or_insert_default()
-            .background_color = Some(color);
-        border_style
-            .bottom_border
-            .get_or_insert_default()
-            .background_color = Some(color);
-        border_style
-            .left_border
-            .get_or_insert_default()
-            .background_color = Some(color);
-        border_style
-            .right_border
-            .get_or_insert_default()
-            .background_color = Some(color);
+        border_style.top_border = Some(color);
+        border_style.bottom_border = Some(color);
+        border_style.left_border = Some(color);
+        border_style.right_border = Some(color);
         styled
     }
 

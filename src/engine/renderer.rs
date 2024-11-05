@@ -6,13 +6,13 @@ use std::{
 
 use crossterm::{
     cursor, execute,
-    style::{Attributes, Color, ContentStyle},
+    style::{Color, ContentStyle},
     terminal, QueueableCommand,
 };
 use glam::U16Vec2;
 use unicode_width::UnicodeWidthStr;
 
-use crate::style::{BorderStyle, CanvasAlignment, StyledPrint};
+use crate::style::{CanvasAlignment, StyledPrint};
 
 use super::{Canvas, CanvasPos};
 
@@ -29,28 +29,6 @@ impl Default for Cell {
             style: ContentStyle::default(),
         }
     }
-}
-
-impl Cell {
-    pub(super) fn styled(c: char, style: ContentStyle) -> Self {
-        Cell { c, style }
-    }
-
-    pub(super) fn colored(c: char, fg: Option<Color>, bg: Option<Color>) -> Self {
-        Cell::styled(
-            c,
-            ContentStyle {
-                foreground_color: fg,
-                background_color: bg,
-                underline_color: None,
-                attributes: Attributes::none(),
-            },
-        )
-    }
-
-    // pub(super) fn new(c: char) -> Self {
-    //     Cell::styled(c, ContentStyle::default())
-    // }
 }
 
 pub(super) struct BlockCell<'a> {
@@ -348,12 +326,6 @@ impl Renderer {
         self.buffer.size()
     }
 
-    // pub(super) fn simple_draw(&mut self, c: char, pos: U16Vec2) {
-    //     if let Some(cell) = self.buffer.at_mut(pos) {
-    //         cell.c = c;
-    //     }
-    // }
-
     pub(super) fn set_terminal_styling(
         stdout: &mut Stdout,
         style: &ContentStyle,
@@ -422,66 +394,6 @@ impl Drop for Renderer {
     }
 }
 
-impl BorderStyle {
-    fn top_border_as_cells(&self, content_width: u16) -> Vec<Cell> {
-        let total_length = (content_width + self.extra_width()) as usize;
-        let mut cells = Vec::with_capacity(total_length);
-        if let Some(top_color) = &self.top_border {
-            if let Some(color) = &self.left_border {
-                cells.push(Cell::colored(
-                    self.top_left(),
-                    color.foreground_color,
-                    color.background_color,
-                ));
-            }
-            for _ in 0..content_width {
-                cells.push(Cell::colored(
-                    self.top(),
-                    top_color.foreground_color,
-                    top_color.background_color,
-                ));
-            }
-            if let Some(color) = &self.right_border {
-                cells.push(Cell::colored(
-                    self.top_right(),
-                    color.foreground_color,
-                    color.background_color,
-                ));
-            }
-        }
-        cells
-    }
-
-    fn bottom_border_as_cells(&self, content_width: u16) -> Vec<Cell> {
-        let total_length = (content_width + self.extra_width()) as usize;
-        let mut cells = Vec::with_capacity(total_length);
-        if let Some(top_color) = &self.bottom_border {
-            if let Some(color) = &self.left_border {
-                cells.push(Cell::colored(
-                    self.bottom_left(),
-                    color.foreground_color,
-                    color.background_color,
-                ));
-            }
-            for _ in 0..content_width {
-                cells.push(Cell::colored(
-                    self.bottom(),
-                    top_color.foreground_color,
-                    top_color.background_color,
-                ));
-            }
-            if let Some(color) = &self.right_border {
-                cells.push(Cell::colored(
-                    self.bottom_right(),
-                    color.foreground_color,
-                    color.background_color,
-                ));
-            }
-        }
-        cells
-    }
-}
-
 impl Canvas {
     pub(crate) fn new() -> io::Result<Self> {
         Ok(Self {
@@ -522,10 +434,7 @@ impl Canvas {
     pub(super) fn print_styled_content(&mut self, content: StyledPrint<'_>) {
         let style = content.style();
         let content_width = content.content().width() as u16;
-        let content_height = 1;
-        let padded_width = content_width + style.padding.left_padding + style.padding.right_padding;
-        let padded_height =
-            content_height + style.padding.top_padding + style.padding.bottom_padding;
+        let content_height = if content_width == 0 { 0 } else { 1 };
         let total_width = content_width + style.extra_width();
         let total_height = content_height + style.extra_height();
 
@@ -540,25 +449,55 @@ impl Canvas {
         let end_y = (print_pos.y + (total_height + 1) / 2).min(size.y);
         let start_y = end_y.saturating_sub(total_height);
 
-        let padding_start_x = start_x + style.border_style.left_width();
-        let padding_start_y = start_y + style.border_style.top_width();
-
         let line_start_x = start_x + style.left_width();
-        let line_start_y = start_y + style.top_width();
+        let line_start_y = start_y + (style.top_width() + 1) / 2;
 
-        for i in 0..padded_height {
-            for j in 0..padded_width {
-                if let Some(cell) = self
-                    .renderer
-                    .buffer
-                    .at_mut(U16Vec2::new(j + padding_start_x, i + padding_start_y))
-                {
-                    cell.c = ' ';
-                    cell.style = content.style().content_style();
+        let canvas_start_x = line_start_x;
+        let canvas_start_y = line_start_y * 2;
+
+        let canvas_end_x = canvas_start_x + content_width;
+        let canvas_end_y = canvas_start_y + content_height * 2;
+
+        let box_start_x = canvas_start_x.saturating_sub(style.left_width());
+        let box_start_y = canvas_start_y.saturating_sub(style.top_width());
+
+        let box_end_x = canvas_end_x + style.right_width();
+        let box_end_y = canvas_end_y + style.bottom_width();
+
+        for y in box_start_y..box_end_y {
+            for x in box_start_x..box_end_x {
+                if let Some(color) = content.style().background_color {
+                    self.draw_with_color(CanvasPos::new(x, y), color);
                 }
             }
         }
 
+        for y in box_start_y..box_end_y {
+            for x in box_start_x..box_end_x {
+                if let Some(color) = content.style().border_style.left_border {
+                    if x == box_start_x {
+                        self.draw_with_color(CanvasPos::new(x, y), color);
+                    }
+                }
+                if let Some(color) = content.style().border_style.right_border {
+                    if x == box_end_x - 1 {
+                        self.draw_with_color(CanvasPos::new(x, y), color);
+                    }
+                }
+                if let Some(color) = content.style().border_style.top_border {
+                    if y == box_start_y {
+                        self.draw_with_color(CanvasPos::new(x, y), color);
+                    }
+                }
+                if let Some(color) = content.style().border_style.bottom_border {
+                    if y == box_end_y - 1 {
+                        self.draw_with_color(CanvasPos::new(x, y), color);
+                    }
+                }
+            }
+        }
+
+        // write content
         for (i, c) in content.content().chars().enumerate() {
             if let Some(cell) = self
                 .renderer
@@ -566,68 +505,7 @@ impl Canvas {
                 .at_mut(U16Vec2::new(i as u16 + line_start_x, line_start_y))
             {
                 cell.c = c;
-            }
-        }
-
-        if let Some(color) = style.border_style.left_border {
-            for i in 0..padded_height {
-                if let Some(cell) = self
-                    .renderer
-                    .buffer
-                    .at_mut(U16Vec2::new(start_x, padding_start_y + i))
-                {
-                    *cell = Cell::colored(
-                        style.border_style.left(),
-                        color.foreground_color,
-                        color.background_color,
-                    );
-                }
-            }
-        }
-
-        if let Some(color) = style.border_style.right_border {
-            for i in 0..padded_height {
-                if let Some(cell) = self
-                    .renderer
-                    .buffer
-                    .at_mut(U16Vec2::new(start_x + total_width - 1, padding_start_y + i))
-                {
-                    *cell = Cell::colored(
-                        style.border_style.left(),
-                        color.foreground_color,
-                        color.background_color,
-                    );
-                }
-            }
-        }
-
-        for (i, new) in style
-            .border_style
-            .top_border_as_cells(padded_width)
-            .into_iter()
-            .enumerate()
-        {
-            if let Some(cell) = self
-                .renderer
-                .buffer
-                .at_mut(U16Vec2::new(i as u16 + start_x, start_y))
-            {
-                *cell = new;
-            }
-        }
-
-        for (i, new) in style
-            .border_style
-            .bottom_border_as_cells(padded_width)
-            .into_iter()
-            .enumerate()
-        {
-            if let Some(cell) = self
-                .renderer
-                .buffer
-                .at_mut(U16Vec2::new(i as u16 + start_x, start_y + total_height - 1))
-            {
-                *cell = new;
+                cell.style = content.style().content_style();
             }
         }
     }

@@ -15,8 +15,7 @@ struct Snake {
 impl Snake {
     fn init(&mut self, head: U16Vec2) {
         for i in (0..20).rev() {
-            self.parts
-                .push_front(U16Vec2::new((head.x - i).into(), head.y.into()));
+            self.parts.push_front(U16Vec2::new(head.x - i, head.y));
         }
         self.position = self.parts.front().unwrap().as_vec2();
         self.velocity = Vec2::new(1.0, 0.0);

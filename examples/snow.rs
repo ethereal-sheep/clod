@@ -71,23 +71,19 @@ impl App for MyApp {
         let bounds = state.canvas.size();
         for entity in self.entities.iter_mut() {
             if !self.is_paused {
-                entity.vel =
-                    entity.vel + self.wind * state.delta_seconds() as f32 * self.wind_speed;
-                entity.pos = entity.pos
-                    + entity.vel * state.delta_seconds() as f32 * (20.0 + (60.0 * entity.z));
+                entity.vel += self.wind * state.delta_seconds() as f32 * self.wind_speed;
+                entity.pos += entity.vel * state.delta_seconds() as f32 * (20.0 + (60.0 * entity.z));
             }
             let gray_value = (entity.z * 100.0) as u8 + 40;
-            if (entity.pos.y as u16) < bounds.y {
-                if entity.pos.x >= 0.0 {
-                    state.canvas.draw_with_color(
-                        entity.pos.as_u16vec2(),
-                        Color::Rgb {
-                            r: gray_value,
-                            g: gray_value,
-                            b: gray_value,
-                        },
-                    );
-                }
+            if (entity.pos.y as u16) < bounds.y && entity.pos.x >= 0.0 {
+                state.canvas.draw_with_color(
+                    entity.pos.as_u16vec2(),
+                    Color::Rgb {
+                        r: gray_value,
+                        g: gray_value,
+                        b: gray_value,
+                    },
+                );
             }
         }
 
@@ -111,10 +107,12 @@ impl App for MyApp {
                     .bold()
                     .italic()
                     .align(CanvasAlignment::CENTER)
-                    .border_white()
+                    .bottom_border_blue()
+                    .right_border_yellow()
+                    .top_border_blue()
+                    .left_border_yellow()
                     .vertical_padding(1)
-                    .on_red()
-                    .horizontal_padding(3),
+                    .horizontal_padding(1),
             );
         }
 
