@@ -563,7 +563,6 @@ use crate::engine::CanvasPos;
 #[cfg(test)]
 mod tests {
     use crossterm::style::{Attribute, Color};
-    use glam::I16Vec2;
 
     use super::*;
 
@@ -596,15 +595,15 @@ mod tests {
     #[test]
     fn apply_canvas_align() {
         let canvas_size = U16Vec2::new(10, 11);
-        assert_eq!(CanvasAlignment::TOP.apply(canvas_size), U16Vec2::new(4, 0));
+        assert_eq!(CanvasAlignment::TOP.apply(canvas_size), U16Vec2::new(5, 0));
         assert_eq!(
             CanvasAlignment::BOTTOM.apply(canvas_size),
-            U16Vec2::new(4, 10)
+            U16Vec2::new(5, 11)
         );
         assert_eq!(CanvasAlignment::LEFT.apply(canvas_size), U16Vec2::new(0, 5));
         assert_eq!(
             CanvasAlignment::RIGHT.apply(canvas_size),
-            U16Vec2::new(9, 5)
+            U16Vec2::new(10, 5)
         );
         assert_eq!(
             (CanvasAlignment::TOP | CanvasAlignment::LEFT).apply(canvas_size),
@@ -612,7 +611,7 @@ mod tests {
         );
         assert_eq!(
             (CanvasAlignment::BOTTOM | CanvasAlignment::RIGHT).apply(canvas_size),
-            canvas_size.saturating_add_signed(I16Vec2::NEG_ONE)
+            canvas_size
         );
         assert_eq!(
             (CanvasAlignment::TOP
@@ -620,7 +619,7 @@ mod tests {
                 | CanvasAlignment::BOTTOM
                 | CanvasAlignment::RIGHT)
                 .apply(canvas_size),
-            U16Vec2::new(4, 5)
+            U16Vec2::new(5, 5)
         );
         assert_eq!(
             (CanvasAlignment::TOP
