@@ -9,7 +9,9 @@ use crossterm::{
     style::{Color, ContentStyle},
     terminal, QueueableCommand,
 };
-use glam::U16Vec2;
+use glam::{U16Vec2, Vec2};
+use rand_distr::num_traits::{pow, Float};
+use rgb::Rgb;
 use unicode_width::UnicodeWidthStr;
 
 use crate::style::{CanvasAlignment, StyledPrint};
@@ -28,6 +30,14 @@ impl Default for Cell {
             c: ' ',
             style: ContentStyle::default(),
         }
+    }
+}
+
+impl Cell {
+    fn with_background_color(color: Option<Color>) -> Self {
+        let mut style = ContentStyle::default();
+        style.background_color = color;
+        Self { c: ' ', style }
     }
 }
 
@@ -191,6 +201,7 @@ pub(super) struct DoubleBuffer {
     display: Vec<Cell>,
     hidden: Vec<Cell>,
     size: U16Vec2,
+    default_cell: Option<Cell>,
 }
 
 impl DoubleBuffer {
@@ -204,6 +215,7 @@ impl DoubleBuffer {
             display: vec![Cell::default(); size.element_product() as usize],
             hidden: vec![Cell::default(); size.element_product() as usize],
             size,
+            default_cell: None,
         }
     }
 
@@ -213,10 +225,14 @@ impl DoubleBuffer {
         }
         self.display.clear();
         self.hidden.clear();
-        self.display
-            .resize(size.element_product() as usize, Cell::default());
-        self.hidden
-            .resize(size.element_product() as usize, Cell::default());
+        self.display.resize(
+            size.element_product() as usize,
+            self.default_cell.clone().unwrap_or_default(),
+        );
+        self.hidden.resize(
+            size.element_product() as usize,
+            self.default_cell.clone().unwrap_or_default(),
+        );
         self.size = size;
     }
 
@@ -232,7 +248,8 @@ impl DoubleBuffer {
 
     pub(super) fn swap(&mut self) {
         swap(&mut self.hidden, &mut self.display);
-        self.hidden.fill(Cell::default());
+        self.hidden
+            .fill(self.default_cell.clone().unwrap_or_default());
     }
 
     pub(super) fn size(&self) -> U16Vec2 {
@@ -257,6 +274,10 @@ impl DoubleBuffer {
         }
         let idx: usize = self.position_to_index(&normalized_position);
         self.get_mut(idx)
+    }
+
+    pub(super) fn set_default_cell(&mut self, cell: Option<Cell>) {
+        self.default_cell = cell
     }
 
     fn index_to_position(&self, idx: usize) -> U16Vec2 {
@@ -319,6 +340,12 @@ impl Renderer {
 
     pub(crate) fn resize(&mut self, size: U16Vec2) {
         self.buffer.resize(size);
+        self.redraw = true;
+    }
+
+    pub(super) fn set_background_color(&mut self, color: Option<Color>) {
+        self.buffer
+            .set_default_cell(Some(Cell::with_background_color(color)));
         self.redraw = true;
     }
 
@@ -429,6 +456,138 @@ impl Canvas {
                 cell.set_bottom(color);
             }
         }
+    }
+
+    pub(super) fn aa_square_with_some_rgb(&mut self, pos: Vec2, color: Option<Rgb<u8>>) {
+        let span = 1f32;
+        let half_span = span / 2.0;
+        let span_vector = Vec2::new(half_span, half_span);
+
+        let top_left_bound = pos - span_vector + Vec2::ONE / 2.0;
+        let bottom_right_bound = pos + span_vector + Vec2::ONE / 2.0;
+        let top_left = (pos - span_vector + Vec2::ONE / 2.0).floor().as_u16vec2();
+        let bottom_right = (pos + span_vector + Vec2::ONE / 2.0).ceil().as_u16vec2();
+
+        for y in top_left.y..bottom_right.y {
+            for x in top_left.x..bottom_right.x {
+                let canvas_pos = CanvasPos::new(x, y);
+                let top_left_diff = (canvas_pos.as_vec2() + Vec2::ONE - top_left_bound)
+                    .abs()
+                    .min(Vec2::ONE);
+                let bottom_right_diff = (bottom_right_bound - canvas_pos.as_vec2())
+                    .abs()
+                    .min(Vec2::ONE);
+
+                let width = top_left_diff.x + bottom_right_diff.x - 1.0;
+                let height = top_left_diff.y + bottom_right_diff.y - 1.0;
+
+                let magnitude = width * height;
+
+                let color_magnitude = (magnitude * 255.0) as u8;
+                self.draw_with_color(
+                    canvas_pos,
+                    Color::Rgb {
+                        r: color_magnitude,
+                        g: color_magnitude,
+                        b: color_magnitude,
+                    },
+                );
+            }
+        }
+
+        // if let Some(mut cell) = self
+        //     .half_block_position_to_rendered_position(pos)
+        //     .and_then(|pos| self.renderer.buffer.at_mut(pos))
+        //     .map(BlockCellMut::wrap)
+        // {
+        //     if pos.y % 2 == 0 {
+        //         cell.set_top(color);
+        //     } else {
+        //         cell.set_bottom(color);
+        //     }
+        // }
+    }
+
+    pub(super) fn aa_circle_with_some_rgb(
+        &mut self,
+        pos: Vec2,
+        radius: f32,
+        color: Option<Rgb<u8>>,
+    ) {
+        if radius <= 0.0 {
+            return;
+        }
+
+        let radius_sq = radius * radius;
+        let span_vector = Vec2::new(radius + 1.0, radius + 1.0);
+
+        let top_left = (pos - span_vector + Vec2::ONE / 2.0).floor().as_u16vec2();
+        let bottom_right = (pos + span_vector + Vec2::ONE / 2.0).ceil().as_u16vec2();
+
+        for y in top_left.y..bottom_right.y {
+            for x in top_left.x..bottom_right.x {
+                let canvas_pos = CanvasPos::new(x, y);
+
+                let get_sub_pixel_points = |pow_of_2: usize| {
+                    let divisions = pow(2usize, pow_of_2);
+                    let step = 1.0 / divisions as f32;
+                    let mut points: Vec<Vec2> =
+                        Vec::with_capacity((divisions + 1) * (divisions + 1));
+
+                    for i in 0..=divisions {
+                        for j in 0..=divisions {
+                            let delta =
+                                Vec2::new(j as f32 * step, i as f32 * step) - Vec2::ONE / 2.0;
+                            points.push(canvas_pos.as_vec2() + delta);
+                        }
+                    }
+                    points
+                };
+
+                let pixel_vertices = get_sub_pixel_points(1);
+                if pixel_vertices
+                    .iter()
+                    .all(|p| p.distance_squared(pos) > radius_sq)
+                {
+                    // do nothing
+                } else if pixel_vertices
+                    .iter()
+                    .all(|p| p.distance_squared(pos) <= radius_sq)
+                {
+                    self.draw_with_color(canvas_pos, Color::White);
+                } else {
+                    // on the edge
+                    let sub_pixel_vertices = get_sub_pixel_points(2);
+                    let count = sub_pixel_vertices
+                        .iter()
+                        .filter(|p| p.distance_squared(pos) <= radius_sq)
+                        .count() as f32;
+
+                    let magnitude = count / sub_pixel_vertices.len() as f32;
+                    let color_magnitude = (magnitude * 255.0) as u8;
+                    self.draw_with_color(
+                        canvas_pos,
+                        Color::Rgb {
+                            r: color_magnitude,
+                            g: color_magnitude,
+                            b: color_magnitude,
+                        },
+                    );
+                }
+            }
+        }
+
+        // if let Some(mut cell) = self
+        //     .half_block_position_to_rendered_position(pos)
+        //     .and_then(|pos| self.renderer.buffer.at_mut(pos))
+        //     .map(BlockCellMut::wrap)
+        // {
+        //     if pos.y % 2 == 0 {
+        //         cell.set_top(color);
+        //     } else {
+        //         cell.set_bottom(color);
+        //     }
+        // }
     }
 
     pub(super) fn print_styled_content(&mut self, content: StyledPrint<'_>) {
