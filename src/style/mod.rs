@@ -174,7 +174,7 @@ bitflags! {
 }
 
 impl CanvasAlignment {
-    pub fn apply(&self, canvas_size: U16Vec2) -> CanvasPos {
+    pub fn apply(&self, canvas_size: U16Vec2) -> U16Vec2 {
         let mut current_vec: Option<Vec2> = None;
         let canvas_limit = (canvas_size).as_vec2();
         let half_size = canvas_limit / 2.0;
@@ -549,6 +549,92 @@ impl<'a> From<&'a str> for StyledPrint<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Circle {
+    pub radius: f32,
+    pub outer_stroke: Option<f32>,
+    pub inner_stroke: Option<f32>,
+    pub stroke_color: Option<Rgb<u8>>,
+}
+
+impl Circle {
+    pub fn with_radius(radius: f32) -> Self {
+        Self {
+            radius,
+            outer_stroke: None,
+            inner_stroke: None,
+            stroke_color: None,
+        }
+    }
+
+    pub fn unit() -> Self {
+        Self::with_radius(1.0)
+    }
+}
+
+pub trait CircleLike: Sized + AsMut<Circle> + AsRef<Circle> {
+    type Like: AsMut<Circle> + AsRef<Circle>;
+
+    fn like(self) -> Self::Like;
+
+    fn stroke(self, stroke: f32) -> Self::Like {
+        let mut circle = self.like();
+        circle.as_mut().inner_stroke = Some(stroke / 2.0);
+        circle.as_mut().outer_stroke = Some(stroke / 2.0);
+        circle
+    }
+
+    fn inner_stroke(self, stroke: f32) -> Self::Like {
+        let mut circle = self.like();
+        circle.as_mut().inner_stroke = Some(stroke);
+        circle
+    }
+
+    fn outer_stroke(self, stroke: f32) -> Self::Like {
+        let mut circle = self.like();
+        circle.as_mut().outer_stroke = Some(stroke);
+        circle
+    }
+
+    fn stroke_color(self, color: Rgb<u8>) -> Self::Like {
+        let mut circle = self.like();
+        circle.as_mut().stroke_color = Some(color);
+        circle
+    }
+
+    fn maybe_stroke_color(self, color: Option<Rgb<u8>>) -> Self::Like {
+        let mut circle = self.like();
+        circle.as_mut().stroke_color = color;
+        circle
+    }
+
+    fn solid(self) -> Self::Like {
+        let mut circle = self.like();
+        circle.as_mut().inner_stroke = Some(circle.as_ref().radius);
+        circle
+    }
+}
+
+impl AsRef<Circle> for Circle {
+    fn as_ref(&self) -> &Circle {
+        self
+    }
+}
+
+impl AsMut<Circle> for Circle {
+    fn as_mut(&mut self) -> &mut Circle {
+        self
+    }
+}
+
+impl CircleLike for Circle {
+    type Like = Circle;
+
+    fn like(self) -> Self::Like {
+        self
+    }
+}
+
 // Workaround for https://github.com/rust-lang/rust/issues/78835
 macro_rules! calculated_docs {
     ($(#[doc = $doc:expr] $item:item)*) => { $(#[doc = $doc] $item)* };
@@ -557,8 +643,7 @@ macro_rules! calculated_docs {
 #[allow(clippy::single_component_path_imports)]
 #[allow(clippy::useless_attribute)]
 use calculated_docs;
-
-use crate::engine::CanvasPos;
+use rgb::Rgb;
 
 #[cfg(test)]
 mod tests {

@@ -1,12 +1,13 @@
 use std::f32::consts::PI;
 
 use clod::{
-    style::{CanvasAlignment, Stylize},
+    style::{CanvasAlignment, Circle, CircleLike, Stylize},
     App, AppResult,
 };
 use crossterm::style::Color;
 use glam::{FloatExt, U16Vec2, Vec2};
 use rand::Rng;
+use rgb::Rgb;
 
 struct Entity {
     pos: Vec2,
@@ -68,23 +69,21 @@ impl App for MyApp {
 
         self.density = 40.0.lerp(140.0, ease_sin_sq(elapsed, 160.0));
 
-        let bounds = state.canvas.size();
+        let bounds = state.canvas_size();
         for entity in self.entities.iter_mut() {
             if !self.is_paused {
-                entity.vel += self.wind * state.delta_seconds() as f32 * self.wind_speed;
-                entity.pos += entity.vel * state.delta_seconds() as f32 * (20.0 + (60.0 * entity.z));
+                entity.vel += self.wind * state.delta_seconds() * self.wind_speed;
+                entity.pos +=
+                    entity.vel * state.delta_seconds() * (20.0 + (60.0 * entity.z));
             }
             let gray_value = (entity.z * 100.0) as u8 + 40;
-            if (entity.pos.y as u16) < bounds.y && entity.pos.x >= 0.0 {
-                state.canvas.draw_with_color(
-                    entity.pos.as_u16vec2(),
-                    Color::Rgb {
-                        r: gray_value,
-                        g: gray_value,
-                        b: gray_value,
-                    },
-                );
-            }
+
+            state.aa_circle(
+                entity.pos,
+                Circle::with_radius(1.0 + 0.5 * entity.z)
+                    .stroke_color(Rgb::new(gray_value, gray_value, gray_value))
+                    .solid(),
+            );
         }
 
         self.entities.retain(|e| {
@@ -95,14 +94,14 @@ impl App for MyApp {
         });
 
         if !self.is_paused {
-            self.accumulator += state.delta_seconds() as f32;
+            self.accumulator += state.delta_seconds();
             let drops = self.density * self.accumulator;
             self.accumulator = drops.fract() / self.density;
             for _ in 0..drops as usize {
                 self.create_droplet(&bounds);
             }
         } else {
-            state.canvas.print(
+            state.print(
                 "Paused"
                     .bold()
                     .italic()
@@ -148,6 +147,11 @@ impl App for MyApp {
         self.wind_speed = 0.2;
         self.density = 100.0;
         self.drop = Vec2 { x: 1.0, y: 1.0 }.normalize();
+        _state.set_background_color(Some(Color::Rgb {
+            r: 30,
+            g: 30,
+            b: 30,
+        }));
         Ok(())
     }
 }

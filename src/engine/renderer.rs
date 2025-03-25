@@ -9,14 +9,15 @@ use crossterm::{
     style::{Color, ContentStyle},
     terminal, QueueableCommand,
 };
-use glam::{U16Vec2, Vec2};
-use rand_distr::num_traits::{pow, Float};
+use glam::{IVec2, U16Vec2, Vec2};
+use line_drawing::{Bresenham, XiaolinWu};
+use rand_distr::num_traits::pow;
 use rgb::Rgb;
 use unicode_width::UnicodeWidthStr;
 
-use crate::style::{CanvasAlignment, StyledPrint};
+use crate::style::{CanvasAlignment, Circle, StyledPrint};
 
-use super::{Canvas, CanvasPos};
+use super::SimpleCanvas;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Cell {
@@ -35,8 +36,10 @@ impl Default for Cell {
 
 impl Cell {
     fn with_background_color(color: Option<Color>) -> Self {
-        let mut style = ContentStyle::default();
-        style.background_color = color;
+        let style = ContentStyle {
+            background_color: color,
+            ..Default::default()
+        };
         Self { c: ' ', style }
     }
 }
@@ -343,6 +346,13 @@ impl Renderer {
         self.redraw = true;
     }
 
+    pub(super) fn get_background_color(&self) -> Option<Color> {
+        self.buffer
+            .default_cell
+            .clone()
+            .and_then(|cell| cell.style.background_color)
+    }
+
     pub(super) fn set_background_color(&mut self, color: Option<Color>) {
         self.buffer
             .set_default_cell(Some(Cell::with_background_color(color)));
@@ -421,7 +431,23 @@ impl Drop for Renderer {
     }
 }
 
-impl Canvas {
+impl Circle {
+    fn inner_stroke(&self) -> f32 {
+        if self.inner_stroke.is_none() && self.outer_stroke.is_none() {
+            return 0.5;
+        }
+        self.inner_stroke.unwrap_or_default()
+    }
+
+    fn outer_stroke(&self) -> f32 {
+        if self.inner_stroke.is_none() && self.outer_stroke.is_none() {
+            return 0.5;
+        }
+        self.outer_stroke.unwrap_or_default()
+    }
+}
+
+impl SimpleCanvas {
     pub(crate) fn new() -> io::Result<Self> {
         Ok(Self {
             renderer: Renderer::new()?,
@@ -432,10 +458,7 @@ impl Canvas {
         self.renderer.render()
     }
 
-    pub(super) fn half_block_position_to_rendered_position(
-        &self,
-        pos: CanvasPos,
-    ) -> Option<U16Vec2> {
+    pub(super) fn half_block_position_to_rendered_position(&self, pos: U16Vec2) -> Option<U16Vec2> {
         let canvas_size = self.size();
         if pos.x >= canvas_size.x || pos.y >= canvas_size.y {
             return None;
@@ -444,7 +467,7 @@ impl Canvas {
         Some(U16Vec2::new(pos.x, pos.y / 2))
     }
 
-    pub(super) fn draw_with_some_color(&mut self, pos: CanvasPos, color: Option<Color>) {
+    pub(super) fn draw(&mut self, pos: U16Vec2, color: Option<Color>) {
         if let Some(mut cell) = self
             .half_block_position_to_rendered_position(pos)
             .and_then(|pos| self.renderer.buffer.at_mut(pos))
@@ -458,75 +481,32 @@ impl Canvas {
         }
     }
 
-    pub(super) fn aa_square_with_some_rgb(&mut self, pos: Vec2, color: Option<Rgb<u8>>) {
-        let span = 1f32;
-        let half_span = span / 2.0;
-        let span_vector = Vec2::new(half_span, half_span);
-
-        let top_left_bound = pos - span_vector + Vec2::ONE / 2.0;
-        let bottom_right_bound = pos + span_vector + Vec2::ONE / 2.0;
-        let top_left = (pos - span_vector + Vec2::ONE / 2.0).floor().as_u16vec2();
-        let bottom_right = (pos + span_vector + Vec2::ONE / 2.0).ceil().as_u16vec2();
-
-        for y in top_left.y..bottom_right.y {
-            for x in top_left.x..bottom_right.x {
-                let canvas_pos = CanvasPos::new(x, y);
-                let top_left_diff = (canvas_pos.as_vec2() + Vec2::ONE - top_left_bound)
-                    .abs()
-                    .min(Vec2::ONE);
-                let bottom_right_diff = (bottom_right_bound - canvas_pos.as_vec2())
-                    .abs()
-                    .min(Vec2::ONE);
-
-                let width = top_left_diff.x + bottom_right_diff.x - 1.0;
-                let height = top_left_diff.y + bottom_right_diff.y - 1.0;
-
-                let magnitude = width * height;
-
-                let color_magnitude = (magnitude * 255.0) as u8;
-                self.draw_with_color(
-                    canvas_pos,
-                    Color::Rgb {
-                        r: color_magnitude,
-                        g: color_magnitude,
-                        b: color_magnitude,
-                    },
-                );
-            }
-        }
-
-        // if let Some(mut cell) = self
-        //     .half_block_position_to_rendered_position(pos)
-        //     .and_then(|pos| self.renderer.buffer.at_mut(pos))
-        //     .map(BlockCellMut::wrap)
-        // {
-        //     if pos.y % 2 == 0 {
-        //         cell.set_top(color);
-        //     } else {
-        //         cell.set_bottom(color);
-        //     }
-        // }
-    }
-
-    pub(super) fn aa_circle_with_some_rgb(
-        &mut self,
-        pos: Vec2,
-        radius: f32,
-        color: Option<Rgb<u8>>,
-    ) {
-        if radius <= 0.0 {
+    pub(super) fn draw_aa_circle(&mut self, pos: Vec2, circle: Circle) {
+        if circle.radius <= 0.0 {
             return;
         }
 
-        let radius_sq = radius * radius;
-        let span_vector = Vec2::new(radius + 1.0, radius + 1.0);
+        let color = circle.stroke_color.unwrap_or(Rgb {
+            r: 255,
+            g: 255,
+            b: 255,
+        });
+
+        let outer_stroke_sq =
+            (circle.radius + circle.outer_stroke()) * (circle.radius + circle.outer_stroke());
+        let inner_stroke_sq =
+            (circle.radius - circle.inner_stroke()) * (circle.radius - circle.inner_stroke());
+        let span_vector = Vec2::new(
+            circle.radius + circle.outer_stroke(),
+            circle.radius + circle.outer_stroke(),
+        );
 
         let top_left = (pos - span_vector + Vec2::ONE / 2.0).floor().as_u16vec2();
         let bottom_right = (pos + span_vector + Vec2::ONE / 2.0).ceil().as_u16vec2();
 
         for y in top_left.y..bottom_right.y {
             for x in top_left.x..bottom_right.x {
-                let canvas_pos = CanvasPos::new(x, y);
+                let canvas_pos = U16Vec2::new(x, y);
 
                 let get_sub_pixel_points = |pow_of_2: usize| {
                     let divisions = pow(2usize, pow_of_2);
@@ -547,47 +527,88 @@ impl Canvas {
                 let pixel_vertices = get_sub_pixel_points(1);
                 if pixel_vertices
                     .iter()
-                    .all(|p| p.distance_squared(pos) > radius_sq)
+                    .all(|p| p.distance_squared(pos) > outer_stroke_sq)
                 {
                     // do nothing
+                    // self.draw_with_color(canvas_pos, Color::White);
                 } else if pixel_vertices
                     .iter()
-                    .all(|p| p.distance_squared(pos) <= radius_sq)
+                    .all(|p| p.distance_squared(pos) < inner_stroke_sq)
                 {
-                    self.draw_with_color(canvas_pos, Color::White);
+                } else if pixel_vertices.iter().all(|p| {
+                    let dist_sq = p.distance_squared(pos);
+                    dist_sq <= outer_stroke_sq && dist_sq >= inner_stroke_sq
+                }) {
+                    self.draw(
+                        canvas_pos,
+                        Some(Color::Rgb {
+                            r: color.r,
+                            g: color.g,
+                            b: color.b,
+                        }),
+                    );
                 } else {
                     // on the edge
                     let sub_pixel_vertices = get_sub_pixel_points(2);
                     let count = sub_pixel_vertices
                         .iter()
-                        .filter(|p| p.distance_squared(pos) <= radius_sq)
+                        .filter(|p| {
+                            let dist_sq = p.distance_squared(pos);
+                            dist_sq <= outer_stroke_sq && dist_sq >= inner_stroke_sq
+                        })
                         .count() as f32;
 
                     let magnitude = count / sub_pixel_vertices.len() as f32;
-                    let color_magnitude = (magnitude * 255.0) as u8;
-                    self.draw_with_color(
+                    // let sin_magnitude = (magnitude * PI).sin();
+                    let lerp = |l: f32, r: f32, v: f32| l + (r - l) * v;
+                    let background_color = self.background_rgb_at_or_default(canvas_pos);
+                    self.draw(
                         canvas_pos,
-                        Color::Rgb {
-                            r: color_magnitude,
-                            g: color_magnitude,
-                            b: color_magnitude,
-                        },
+                        Some(Color::Rgb {
+                            r: lerp(background_color.r.into(), color.r.into(), magnitude) as u8,
+                            g: lerp(background_color.g.into(), color.g.into(), magnitude) as u8,
+                            b: lerp(background_color.b.into(), color.b.into(), magnitude) as u8,
+                        }),
                     );
                 }
             }
         }
+    }
 
-        // if let Some(mut cell) = self
-        //     .half_block_position_to_rendered_position(pos)
-        //     .and_then(|pos| self.renderer.buffer.at_mut(pos))
-        //     .map(BlockCellMut::wrap)
-        // {
-        //     if pos.y % 2 == 0 {
-        //         cell.set_top(color);
-        //     } else {
-        //         cell.set_bottom(color);
-        //     }
-        // }
+    pub(super) fn draw_line(&mut self, start: IVec2, end: IVec2, color: Option<Color>) {
+        for (x, y) in Bresenham::new(
+            (start.x, start.y),
+            (end.x, end.y),
+        ) {
+            if x < 0 || y < 0 {
+                continue;
+            }
+            let canvas_pos = U16Vec2::new(x as u16, y as u16);
+            self.draw(canvas_pos, color);
+        }
+    }
+
+    pub(super) fn draw_aa_line(&mut self, start: Vec2, end: Vec2, color: Option<Rgb<u8>>) {
+        let lerp = |l: f32, r: f32, v: f32| l + (r - l) * v;
+
+        let color = color.unwrap_or(Rgb {
+            r: 255,
+            g: 255,
+            b: 255,
+        });
+
+        for ((x, y), magnitude) in XiaolinWu::<f32, i32>::new((start.x, start.y), (end.x, end.y)) {
+            let canvas_pos = U16Vec2::new(x as u16, y as u16);
+            let background_color = self.background_rgb_at_or_default(canvas_pos);
+            self.draw(
+                canvas_pos,
+                Some(Color::Rgb {
+                    r: lerp(background_color.r.into(), color.r.into(), magnitude) as u8,
+                    g: lerp(background_color.g.into(), color.g.into(), magnitude) as u8,
+                    b: lerp(background_color.b.into(), color.b.into(), magnitude) as u8,
+                }),
+            );
+        }
     }
 
     pub(super) fn print_styled_content(&mut self, content: StyledPrint<'_>) {
@@ -626,7 +647,7 @@ impl Canvas {
         for y in box_start_y..box_end_y {
             for x in box_start_x..box_end_x {
                 if let Some(color) = content.style().background_color {
-                    self.draw_with_color(CanvasPos::new(x, y), color);
+                    self.draw(U16Vec2::new(x, y), Some(color));
                 }
             }
         }
@@ -635,22 +656,22 @@ impl Canvas {
             for x in box_start_x..box_end_x {
                 if let Some(color) = content.style().border_style.left_border {
                     if x == box_start_x {
-                        self.draw_with_color(CanvasPos::new(x, y), color);
+                        self.draw(U16Vec2::new(x, y), Some(color));
                     }
                 }
                 if let Some(color) = content.style().border_style.right_border {
                     if x == box_end_x - 1 {
-                        self.draw_with_color(CanvasPos::new(x, y), color);
+                        self.draw(U16Vec2::new(x, y), Some(color));
                     }
                 }
                 if let Some(color) = content.style().border_style.top_border {
                     if y == box_start_y {
-                        self.draw_with_color(CanvasPos::new(x, y), color);
+                        self.draw(U16Vec2::new(x, y), Some(color));
                     }
                 }
                 if let Some(color) = content.style().border_style.bottom_border {
                     if y == box_end_y - 1 {
-                        self.draw_with_color(CanvasPos::new(x, y), color);
+                        self.draw(U16Vec2::new(x, y), Some(color));
                     }
                 }
             }
@@ -669,7 +690,7 @@ impl Canvas {
         }
     }
 
-    pub(super) fn color_at(&self, pos: CanvasPos) -> Option<Color> {
+    pub(super) fn color_at(&self, pos: U16Vec2) -> Option<Color> {
         if let Some(cell) = self
             .half_block_position_to_rendered_position(pos)
             .and_then(|pos| self.renderer.buffer.at(pos))
@@ -683,6 +704,19 @@ impl Canvas {
         } else {
             None
         }
+    }
+
+    fn background_rgb_at_or_default(&self, pos: U16Vec2) -> Rgb<u8> {
+        self.color_at(pos)
+            .or_else(|| self.renderer.get_background_color())
+            .and_then(|color| {
+                if let Color::Rgb { r, g, b } = color {
+                    Some(Rgb::new(r, g, b))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| Rgb::new(0, 0, 0))
     }
 }
 

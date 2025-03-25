@@ -41,7 +41,7 @@ impl MyApp {
 
 impl App for MyApp {
     fn init(&mut self, state: &mut clod::State) -> Result<(), String> {
-        let bounds = state.canvas.size();
+        let bounds = state.canvas_size();
         let center = bounds / 2;
         self.snake.init(center);
         self.apple = self.random_position(&bounds);
@@ -49,11 +49,11 @@ impl App for MyApp {
     }
 
     fn update(&mut self, state: &mut clod::State) -> Result<(), String> {
-        let bounds = state.canvas.size();
+        let bounds = state.canvas_size();
         if !self.is_paused {
             let new_head = self.snake.position
                 + bounds.as_vec2()
-                + self.snake.velocity * state.delta_seconds() as f32 * 30.0;
+                + self.snake.velocity * state.delta_seconds() * 30.0;
             self.snake.position =
                 Vec2::new(new_head.x % bounds.x as f32, new_head.y % bounds.y as f32);
             if self.snake.parts.front() != Some(&self.snake.position.as_u16vec2()) {
@@ -70,12 +70,12 @@ impl App for MyApp {
 
         for (i, part) in self.snake.parts.iter_mut().enumerate() {
             if i % 2 == 0 {
-                state.canvas.draw_with_color(*part, Color::Cyan);
+                state.point_with_color(part.as_ivec2(), Color::Cyan);
             } else {
-                state.canvas.draw_with_color(*part, Color::Blue);
+                state.point_with_color(part.as_ivec2(), Color::Blue);
             }
         }
-        state.canvas.draw_with_color(self.apple, Color::Red);
+        state.point_with_color(self.apple.as_ivec2(), Color::Red);
 
         Ok(())
     }

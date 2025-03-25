@@ -22,7 +22,7 @@ const MAX_LIVES: u8 = 100;
 
 impl App for MyApp {
     fn update(&mut self, state: &mut clod::State) -> Result<(), String> {
-        let bounds = state.canvas.size();
+        let bounds = state.canvas_size();
         for entity in self.entities.iter_mut() {
             entity.pos = entity.pos.saturating_add_signed(entity.vel);
         }
@@ -76,12 +76,12 @@ impl App for MyApp {
 
         for entity in self.entities.iter_mut() {
             if entity.collided {
-                state.canvas.draw_with_color(entity.pos, Color::White);
+                state.point_with_color(entity.pos.as_ivec2(), Color::White);
                 entity.collided = false;
             } else {
                 let saturation = (entity.lives as f32 / MAX_LIVES as f32 * 255.0) as u8;
-                state.canvas.draw_with_color(
-                    entity.pos,
+                state.point_with_color(
+                    entity.pos.as_ivec2(),
                     Color::Rgb {
                         r: 255 - saturation,
                         g: saturation,
@@ -93,7 +93,7 @@ impl App for MyApp {
 
         self.entities.retain(|e| e.lives > 0);
 
-        state.canvas.print(
+        state.print(
             "Press A to spawn entity"
                 .align(CanvasAlignment::TOP | CanvasAlignment::LEFT)
                 .padding(2),
@@ -108,7 +108,7 @@ impl App for MyApp {
             let y = if thread_rng().gen_bool(0.5) { 1 } else { -1 };
 
             self.entities.push(Entity {
-                pos: state.canvas.size() / 2,
+                pos: state.canvas_size() / 2,
                 vel: I16Vec2::new(x, y),
                 lives: MAX_LIVES,
                 collided: false,
