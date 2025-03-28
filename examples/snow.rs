@@ -25,6 +25,7 @@ struct MyApp {
     wind_speed: f32,
     drop_speed: f32,
     accumulator: f32,
+    max_entities: usize,
     is_paused: bool,
 }
 
@@ -72,9 +73,9 @@ impl App for MyApp {
         let bounds = state.canvas_size();
         for entity in self.entities.iter_mut() {
             if !self.is_paused {
-                entity.vel += self.wind * state.delta_seconds() * self.wind_speed;
+                entity.vel += self.wind * state.delta_seconds() as f32 * self.wind_speed;
                 entity.pos +=
-                    entity.vel * state.delta_seconds() * (20.0 + (60.0 * entity.z));
+                    entity.vel * state.delta_seconds() as f32 * (20.0 + (60.0 * entity.z));
             }
             let gray_value = (entity.z * 100.0) as u8 + 40;
 
@@ -94,10 +95,12 @@ impl App for MyApp {
         });
 
         if !self.is_paused {
-            self.accumulator += state.delta_seconds();
+            self.accumulator += state.delta_seconds() as f32;
+            let available = self.max_entities.saturating_sub(self.entities.len());
             let drops = self.density * self.accumulator;
             self.accumulator = drops.fract() / self.density;
-            for _ in 0..drops as usize {
+            let drops = std::cmp::min(available, drops as usize);
+            for _ in 0..drops {
                 self.create_droplet(&bounds);
             }
         } else {
@@ -106,12 +109,9 @@ impl App for MyApp {
                     .bold()
                     .italic()
                     .align(CanvasAlignment::CENTER)
-                    .bottom_border_blue()
-                    .right_border_yellow()
-                    .top_border_blue()
-                    .left_border_yellow()
+                    .border_white()
                     .vertical_padding(1)
-                    .horizontal_padding(1),
+                    .horizontal_padding(3),
             );
         }
 
@@ -145,7 +145,8 @@ impl App for MyApp {
     fn init(&mut self, _state: &mut clod::State) -> Result<(), String> {
         self.drop_speed = 1.0;
         self.wind_speed = 0.2;
-        self.density = 100.0;
+        self.density = 20.0;
+        self.max_entities = 100;
         self.drop = Vec2 { x: 1.0, y: 1.0 }.normalize();
         _state.set_background_color(Some(Color::Rgb {
             r: 30,
