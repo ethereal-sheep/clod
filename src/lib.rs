@@ -110,8 +110,8 @@ pub type AppResult = Result<(), AppError>;
 
 pub trait App {
     fn update(&mut self, state: &mut State) -> Result<(), String>;
-    fn init(&mut self, state: &mut State) -> Result<(), String>;
-    fn on_key_event(&mut self, state: &mut State, event: KeyEvent);
+    fn init(&mut self, _state: &mut State) -> Result<(), String> { Ok(())}
+    fn on_key_event(&mut self, _state: &mut State, _event: KeyEvent) {}
 
     fn run(&mut self) -> AppResult {
         let mut state = State::new()?;
